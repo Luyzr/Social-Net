@@ -11,7 +11,11 @@ def gettime(timelist):
 
 def divide(data, limits):
 # 根据最早的转发时间确定该部分数据的阶段归属并对其进行分类
-    divided = {1:[], 2:[], 3:[], 4:[]}
+    periods = len(limits) + 1
+    divided = {}
+    for i in range(periods):
+        divided[i + 1] = []
+    # divided = {1:[], 2:[], 3:[], 4:[]}
     formal = ''
     limit_t = list(map(gettime, limits))
     pubt = 0
@@ -26,14 +30,12 @@ def divide(data, limits):
             t = gettime(t)
             notes = row[6]
             if formal != owner and formal != '':
-                if pubt <= limit_t[0]:
-                    divided[1].append(temp)
-                elif pubt <= limit_t[1]:
-                    divided[2].append(temp)
-                elif pubt <= limit_t[2]:
-                    divided[3].append(temp)
-                else:
-                    divided[4].append(temp)
+                period = 0
+                while pubt > limit_t[period]:
+                    period += 1
+                    if period == periods - 1:
+                        break
+                divided[period + 1].append(temp)
                 temp = [[owner, affected, notes]]
                 formal = owner
                 pubt = t
@@ -41,6 +43,7 @@ def divide(data, limits):
                 formal = owner
                 if temp == [[]]:
                     temp = [[owner, affected, notes]]
+                    pubt = t
                 else:
                     temp.append([owner, affected, notes])
                 if pubt > t:
@@ -149,9 +152,8 @@ def list2xls(k, xlspath):
         
     wb.save('result/' + xlspath) #保存文件
 
-def getgephi(period, k):
+def getgephi(weight, period, k):
     # 将数据整理成可供gephi使用的数据格式
-    weight = [5, 20, 5, 3]
     gephi = [['Source', 'Target', 'Weight']]
     n = len(k)
     for i in range(1, n):
@@ -160,7 +162,7 @@ def getgephi(period, k):
                 gephi.append([k[i][0], k[0][j], k[i][j]])
     return gephi
 
-def getdata(periods ,divided, startperiod):
+def getdata(periods ,divided, startperiod, form='', weights=[]):
     # 获得每个阶段的社会网络矩阵
     for period in range(periods):
         dic = {}
@@ -168,8 +170,8 @@ def getdata(periods ,divided, startperiod):
         new_ans = [] # 用于标定博主和用户
         ownernum = 0
         affectednum = 0
-        txtpath = 'data_{}.txt'.format(period)
-        xlspath = 'data_{}.xlsx'.format(period)
+        txtpath = 'data_{}.txt'.format(period + startperiod)
+        xlspath = 'data_{}.xlsx'.format(period + startperiod)
         for group in divided[period + startperiod]:
             for row in group:
                 owner = row[0]
@@ -204,7 +206,7 @@ def getdata(periods ,divided, startperiod):
 
         nou = len(ans) + 1
         k = [[0]*nou for i in range(nou)]
-        print('Number of accounts in period {}: {}\n Processing...'.format(period+1, len(ans)))
+        print('Number of accounts in period {}: {}\nProcessing...'.format(period + startperiod, len(ans)))
         for j in range(nou-1):
             k[0][j+1] = ans[j]
             k[j+1][0] = ans[j]
@@ -224,18 +226,17 @@ def getdata(periods ,divided, startperiod):
                                 nn = ans.index(n) + 1
                                 k[nn][affected] += 1
                                 k[owner][nn] += 1
-        # list2txt(nou, ans, k, txtpath)
-        gephi = getgephi(period, k)
-        list2xls(gephi, xlspath)
-        # newlist2txt(nou, ans, new_ans, k, txtpath)
+        if form == 'g':
+            gephi = getgephi(weights, period, k)
+            print('Saving data to {}...'.format(xlspath))
+            list2xls(gephi, xlspath)
+        else:
+            print('Saving data to {}...'.format(txtpath))
+            # list2txt(nou, ans, k, txtpath)
+            newlist2txt(nou, ans, new_ans, k, txtpath)
                 
-
-if __name__ == '__main__':
-    showsome()
-    path = 'test.xlsx'
-    # 待处理的Excel文件
-    limits = [[18, 10, 28, 17, 50], [18, 11, 1, 0, 0], [18, 11, 3, 0, 0]]
-    # 5个时间节点[年, 月, 日, 时, 分]
+def main(path, limits, f_p, t_p, form, weights):
+    # 数据路径, 各阶段分界线, 从该阶段开始, 到该阶段结束(包含该阶段), 选择数据输出格式(默认为Ucinet, 'g'表示gephi版), 如果要gephi版可进行再筛选
     data = pd.read_excel(path,sheet_name = 0, names=['owner', 'affected', 'famous', 'date', 'link', 'notes'])
     print('Path of Excel:{}\nTime for dividing:{}\nDeviding...'.format(path, limits))
     divided = divide(data, limits)
@@ -246,5 +247,16 @@ if __name__ == '__main__':
         period = i + 1
         avg = countnum(True, divided[period])
     # countnum(divided)
-    getdata(4, divided, 1)
-    # getdata(跨越阶段数，数据，开始阶段)
+    if form == 'g':
+        print('The data format will match the Gephi')
+    else:
+        print('The data format will match the Ucinet')
+    getdata(t_p - f_p + 1, divided, f_p, form, weights)
+
+if __name__ == '__main__':
+    showsome()
+    path = 'test.xlsx'
+    # 待处理的Excel文件
+    limits = [[18, 10, 28, 17, 50], [18, 11, 1, 0, 0], [18, 11, 3, 0, 0]]
+    # 时间节点命名[年, 月, 日, 时, 分]
+    main(path, limits, 1, 1, form='g', weights=[5, 20, 5, 3])
